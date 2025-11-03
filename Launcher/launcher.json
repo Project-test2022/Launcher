@@ -1,5 +1,5 @@
 {
   "gameTitle": "Mihanada Game",
   "gameExePath": "Game/Game.exe",
-  "manifestUrl": "https://api.github.com/roject-test2022/Project/releases/latest"
+  "manifestUrl": "https://raw.githubusercontent.com/Project-test2022/Update_Game/main/latest.json"
 }

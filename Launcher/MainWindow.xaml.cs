@@ -1,5 +1,6 @@
 ﻿using Launcher.Config;
 using Launcher.Services;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -79,9 +80,42 @@ namespace Launcher
         /// <summary>
         /// 更新ボタン押下時の処理
         /// </summary>
-        private void UpdateButton_Click(object sender, RoutedEventArgs e)
+        private async void UpdateButton_Click(object sender, RoutedEventArgs e)
         {
-            Log("更新ボタンが押されました。（未実装）");
+            try
+            {
+                // ゲームが起動中なら更新をキャンセル
+                if (_gameService.IsRunning(_config.GameExePath))
+                {
+                    Log("ゲームが起動中のため、更新を中止します。");
+                    return;
+                }
+
+                UpdateButton.IsEnabled = false;
+                PlayButton.IsEnabled = false;
+                ProgressBar.Value = 0;
+
+                var updateService = new UpdateService();
+                updateService.ProgressChanged += (progress, message) =>
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        ProgressBar.Value = progress;
+                        Log(message);
+                    });
+                };
+
+                await updateService.RunAsync(_config.ManifestUrl, "version.txt");
+            }
+            catch (Exception ex)
+            {
+                Log("更新中にエラーが発生しました: " + ex.Message);
+            }
+            finally
+            {
+                UpdateButton.IsEnabled = true;
+                PlayButton.IsEnabled = true;
+            }
         }
 
         /// <summary>
