@@ -6,15 +6,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <ApplicationIcon>Mihanada_logo.ico</ApplicationIcon>
   </PropertyGroup>
-
-  <ItemGroup>
-    <Content Include="Mihanada_logo.ico" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Octopus.Octodiff" Version="2.0.549" />
-  </ItemGroup>
 
 </Project>
