@@ -1,5 +1,6 @@
 ﻿using Launcher.Config;
 using Launcher.Services;
+using Launcher.Utility;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -51,7 +52,6 @@ namespace Launcher
             }
             catch (Exception ex)
             {
-                MessageBox.Show("設定ファイルの読み込みに失敗しました。\n" + ex.Message, "設定エラー", MessageBoxButton.OK, MessageBoxImage.Error);
                 ShowFailureAndStay("設定ファイルの読み込みに失敗しました。例外: " + ex.Message, "設定ファイルの読み込みに失敗したため実行できません");
                 return;
             }
@@ -59,7 +59,6 @@ namespace Launcher
             // 起動中チェック
             if (IsGameRunning())
             {
-                MessageBox.Show("ゲームが既に起動中です。先にゲームを終了してください。", "起動エラー", MessageBoxButton.OK, MessageBoxImage.Error);
                 ShowFailureAndStay("ゲームが既に起動中です。", "ゲームが既に起動中のため実行できません");
                 return;
             }
@@ -118,7 +117,7 @@ namespace Launcher
             {
                 ProgressBar.IsIndeterminate = false;
                 StatusText.Text = "更新中にエラーが発生しました。";
-                MessageBox.Show("更新中にエラーが発生しました。\n" + ex.Message, "更新エラー", MessageBoxButton.OK, MessageBoxImage.Error);
+                Log.Error(ex.Message);
                 return false;
             }
         }
@@ -174,14 +173,12 @@ namespace Launcher
 
                 if (!File.Exists(path))
                 {
-                    MessageBox.Show("ゲームの実行ファイルが見つかりません。\n" + path, "起動エラー", MessageBoxButton.OK, MessageBoxImage.Error);
                     ShowFailureAndStay("ゲームの実行ファイルが見つかりません: " + path, "ゲームの実行ファイルが見つからないため起動できません");
                     return;
                 }
 
                 if (IsGameRunning())
                 {
-                    MessageBox.Show("ゲームが既に実行中のため、新たに起動できません。", "起動エラー", MessageBoxButton.OK, MessageBoxImage.Error);
                     ShowFailureAndStay("ゲームが既に実行中のため、新たに起動できません。", "ゲームが既に実行中のため起動できません");
                     return;
                 }
@@ -196,7 +193,6 @@ namespace Launcher
             }
             catch (Exception ex)
             {
-                MessageBox.Show("ゲームの起動に失敗しました。\n" + ex.Message, "起動エラー", MessageBoxButton.OK, MessageBoxImage.Error);
                 ShowFailureAndStay("ゲームの起動に失敗しました。例外: " + ex.Message, "ゲームの起動に失敗しました");
             }
         }
@@ -262,19 +258,7 @@ namespace Launcher
             ProgressDetail.Text = "";
             CloseButton.Visibility = Visibility.Visible;
 
-            try
-            {
-                var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-                File.WriteAllText(
-                    Path.Combine(baseDir, "launcher_last.log"),
-                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + messageForUser,
-                    Encoding.UTF8
-                );
-            }
-            catch
-            {
-                // ログの書き込みに失敗しても無視する
-            }
+            Log.Error(messageForUser);
         }
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)

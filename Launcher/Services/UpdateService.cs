@@ -144,6 +144,8 @@ namespace Launcher.Services
             catch (Exception ex)
             {
                 _log("[Error] " + ex.Message);
+
+                Log.Error(ex.Message);
                 return false;
             }
         }
