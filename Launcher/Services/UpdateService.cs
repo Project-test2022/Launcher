@@ -1,5 +1,6 @@
 ﻿using Launcher.Model;
 using System.IO;
+using System.IO.Compression;
 using System.Net.Http;
 using System.Text.Json;
 
@@ -60,7 +61,8 @@ namespace Launcher.Services
                 // パッチのダウンロード
                 var zipPath = await DownloadPatchAsync(manifest.PatchUrl ?? "");
 
-                // TODO: ZIP展開・適用処理
+                // ZIP展開・適用処理
+                await ExtractAndApplyPatchAsync(zipPath);
 
                 // バージョンファイル更新
                 await File.WriteAllTextAsync(versionFilePath, versionInfo.LatestVersion);
@@ -144,7 +146,7 @@ namespace Launcher.Services
                 var buffer = new byte[81920];
                 long totalRead = 0;
                 int read;
-                double latsPercent = 0;
+                double lastPercent = 0;
 
                 while ((read = await stream.ReadAsync(buffer)) > 0)
                 {
@@ -154,10 +156,10 @@ namespace Launcher.Services
                     if (canReport)
                     {
                         var percent = 20 + (double)totalRead / total * 60;
-                        if (percent - latsPercent >= 1)
+                        if (percent - lastPercent >= 1)
                         {
                             Info(percent, $"ダウンロード中... {percent:F0}%");
-                            latsPercent = percent;
+                            lastPercent = percent;
                         }
                     }
                 }
@@ -171,6 +173,103 @@ namespace Launcher.Services
             }
 
             return outputPath;
+        }
+
+        private async Task ExtractAndApplyPatchAsync(string zipPath)
+        {
+            if (!File.Exists(zipPath))
+            {
+                Error("パッチファイルが見つかりません。");
+                throw new FileNotFoundException("パッチファイルが見つかりません。", zipPath);
+            }
+
+            var baseDir = AppContext.BaseDirectory;
+            var gameDir = Path.Combine(baseDir, "Game");
+            var tempDir = Path.Combine(baseDir, "Game_temp");
+            var oldDir = Path.Combine(baseDir, "Game_old");
+
+            try
+            {
+                // クリーンアップ
+                if (Directory.Exists(tempDir))
+                {
+                    Directory.Delete(tempDir, true);
+                }
+                if (!Directory.Exists(gameDir))
+                {
+                    Directory.CreateDirectory(gameDir);
+                }
+
+                Info(70, "ゲームデータをコピーしています...");
+                await CopyDirectoryAsync(gameDir, tempDir);
+
+                Info(80, "パッチを展開しています..");
+                var extractDir = Path.Combine(TmpDir, "extracted");
+                if (Directory.Exists(extractDir))
+                {
+                    Directory.Delete(extractDir, true);
+                }
+                Directory.CreateDirectory(extractDir);
+                ZipFile.ExtractToDirectory(zipPath, extractDir, true);
+
+                Info(90, "パッチを適用しています...");
+                await CopyDirectoryAsync(extractDir, tempDir);
+
+                Info(95, "更新内容を反映しています...");
+                // 旧フォルダ削除
+                if (Directory.Exists(oldDir))
+                {
+                    Directory.Delete(oldDir, true);
+                }
+
+                // 元のフォルダを退避
+                if (Directory.Exists(gameDir))
+                {
+                    Directory.Move(gameDir, oldDir);
+                }
+
+                // 新しいフォルダを正式フォルダにリネーム
+                Directory.Move(tempDir, gameDir);
+
+                Info(100, "更新が完了しました。旧データを削除します。");
+
+                // 旧フォルダ削除
+                if (Directory.Exists(oldDir))
+                {
+                    Directory.Delete(oldDir, true);
+                }
+            }
+            catch (Exception ex)
+            {
+                Error($"パッチの適用に失敗しました: {ex.Message}");
+
+                // ロールバック
+                if (Directory.Exists(tempDir))
+                {
+                    Directory.Delete(tempDir, true);
+                }
+
+                throw;
+            }
+        }
+
+        private static async Task CopyDirectoryAsync(string sourceDir, string destDir)
+        {
+            foreach (var dir in Directory.GetDirectories(sourceDir, "*", SearchOption.AllDirectories))
+            {
+                var targetDir = dir.Replace(sourceDir, destDir);
+                Directory.CreateDirectory(targetDir);
+            }
+
+            foreach (var file in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories))
+            {
+                var targetFile = file.Replace(sourceDir, destDir);
+                Directory.CreateDirectory(Path.GetDirectoryName(targetFile)!);
+
+                await using var sourceStream = File.OpenRead(file);
+                await using var destStream = File.Create(targetFile);
+                await sourceStream.CopyToAsync(destStream);
+            }
         }
 
         private void CleanupTempFiles()
