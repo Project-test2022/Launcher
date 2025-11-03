@@ -16,6 +16,7 @@ namespace Launcher.Services
         {
             PropertyNameCaseInsensitive = true
         };
+        private string TmpDir => Path.Combine(AppContext.BaseDirectory, "temp");
 
         public UpdateService()
         {
@@ -54,10 +55,21 @@ namespace Launcher.Services
             // 更新が必要な場合
             Info(10, $"更新を開始します: {versionInfo.CurrentVersion} → {versionInfo.LatestVersion}");
 
-            // TODO: 差分ZIPをダウンロードして適用
+            try
+            {
+                // パッチのダウンロード
+                var zipPath = await DownloadPatchAsync(manifest.PatchUrl ?? "");
 
-            // バージョンファイル更新
-            await File.WriteAllTextAsync(versionFilePath, versionInfo.LatestVersion);
+                // TODO: ZIP展開・適用処理
+
+                // バージョンファイル更新
+                await File.WriteAllTextAsync(versionFilePath, versionInfo.LatestVersion);
+            }
+            finally
+            {
+                CleanupTempFiles();
+            }
+
             Info(100, $"更新完了（{versionInfo.LatestVersion}）。");
         }
 
@@ -97,6 +109,84 @@ namespace Launcher.Services
             bool updateRequired = manifest.Version != currentVersion;
 
             return new VersionInfo(currentVersion, manifest.Version, updateRequired);
+        }
+
+        private async Task<string> DownloadPatchAsync(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                Error("パッチファイルのURLが設定されていません。");
+                throw new InvalidOperationException("パッチファイルのURLが設定されていません。");
+            }
+
+            var tmpDir = TmpDir;
+            // 一度削除してから作成
+            if (Directory.Exists(tmpDir))
+            {
+                Directory.Delete(tmpDir, true);
+            }
+            Directory.CreateDirectory(tmpDir);
+
+            var outputPath = Path.Combine(tmpDir, "update.zip");
+            Info(20, "パッチファイルをダウンロードしています...");
+
+            try
+            {
+                using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+                response.EnsureSuccessStatusCode();
+
+                var total = response.Content.Headers.ContentLength ?? -1L;
+                var canReport = total > 0;
+
+                await using var stream = await response.Content.ReadAsStreamAsync();
+                await using var fileStream = File.Create(outputPath);
+
+                var buffer = new byte[81920];
+                long totalRead = 0;
+                int read;
+                double latsPercent = 0;
+
+                while ((read = await stream.ReadAsync(buffer)) > 0)
+                {
+                    await fileStream.WriteAsync(buffer.AsMemory(0, read));
+                    totalRead += read;
+
+                    if (canReport)
+                    {
+                        var percent = 20 + (double)totalRead / total * 60;
+                        if (percent - latsPercent >= 1)
+                        {
+                            Info(percent, $"ダウンロード中... {percent:F0}%");
+                            latsPercent = percent;
+                        }
+                    }
+                }
+
+                Info(80, "パッチのダウンロードが完了しました。");
+            }
+            catch (Exception ex)
+            {
+                Error($"パッチのダウンロードに失敗しました: {ex.Message}");
+                throw new IOException("パッチのダウンロードに失敗しました。", ex);
+            }
+
+            return outputPath;
+        }
+
+        private void CleanupTempFiles()
+        {
+            var tmpDir = TmpDir;
+            if (Directory.Exists(tmpDir))
+            {
+                try
+                {
+                    Directory.Delete(tmpDir, true);
+                }
+                catch
+                {
+                    // ファイルロック中などで削除できない場合は無視
+                }
+            }
         }
 
         private void Info(double percent, string message)
