@@ -56,6 +56,14 @@ namespace Launcher
         }
 
         /// <summary>
+        /// 更新ボタン押下時の処理
+        /// </summary>
+        private void UpdateButton_Click(object sender, RoutedEventArgs e)
+        {
+            Log("更新ボタンが押されました。（未実装）");
+        }
+
+        /// <summary>
         /// ゲーム起動イベントハンドラ
         /// </summary>
         private void OnGameStarted()

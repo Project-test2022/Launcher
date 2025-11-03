@@ -46,13 +46,13 @@
 
         <!-- ログ出力（1行分） -->
         <TextBlock x:Name="LogText"
-                   Text="準備中..."
+                   Text="更新中..."
                    FontFamily="Consolas"
                    FontSize="13"
                    Foreground="Black"
                    TextAlignment="Center"
                    VerticalAlignment="Top"
-                   Margin="0,269,0,0"/>
+                   Margin="0,247,0,0"/>
 
         <!-- ボタンエリア -->
         <StackPanel Orientation="Horizontal"
