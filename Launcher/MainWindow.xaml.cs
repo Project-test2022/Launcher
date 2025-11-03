@@ -21,7 +21,6 @@ namespace Launcher
             InitializeComponent();
 
             updateService = new UpdateService(
-                log => Dispatcher.Invoke(() => StatusText.Text = log),
                 (percent, detail) => Dispatcher.Invoke(() =>
                 {
                     ProgressBar.IsIndeterminate = percent < 0;

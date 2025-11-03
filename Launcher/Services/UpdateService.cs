@@ -16,12 +16,10 @@ namespace Launcher.Services
 {
     public sealed class UpdateService
     {
-        private readonly Action<string> _log;
         private readonly Action<double, string> _progress;
 
-        public UpdateService(Action<string> log, Action<double, string> progress)
+        public UpdateService(Action<double, string> progress)
         {
-            _log = log ?? (_ => { });
             _progress = progress ?? ((_, __) => { });
         }
 
@@ -41,20 +39,20 @@ namespace Launcher.Services
                 Directory.CreateDirectory(config.GameDirectory);
 
                 var currentVersion = LoadCurrentVersion(config.CurrentVersionFile);
-                _log("現在のバージョン: " + (string.IsNullOrWhiteSpace(currentVersion) ? "(不明)" : currentVersion));
+                Log.Error("現在のバージョン: " + (string.IsNullOrWhiteSpace(currentVersion) ? "(不明)" : currentVersion));
 
                 var manifest = LoadManifest(config.ManifestUrlOrPath);
-                _log("最新: " + manifest.Version + "（基準: " + manifest.BaseFrom + "）");
+                Log.Error("最新: " + manifest.Version + "（基準: " + manifest.BaseFrom + "）");
 
                 if (string.IsNullOrWhiteSpace(currentVersion))
                 {
-                    _log("[Error] 現在のバージョンが不明です。");
+                    Log.Error("[Error] 現在のバージョンが不明です。");
                     return false;
                 }
 
                 if (!string.Equals(currentVersion, manifest.BaseFrom, StringComparison.OrdinalIgnoreCase))
                 {
-                    _log("[ERROR] 現在バージョン(" + currentVersion + ") と基準(" + manifest.BaseFrom + ") が一致しません。");
+                    Log.Error("[ERROR] 現在バージョン(" + currentVersion + ") と基準(" + manifest.BaseFrom + ") が一致しません。");
                     return false;
                 }
 
@@ -71,7 +69,7 @@ namespace Launcher.Services
                     var targetPath = Path.Combine(config.GameDirectory, patch.Path.Replace('/', Path.DirectorySeparatorChar));
                     if (!File.Exists(targetPath))
                     {
-                        _log("[ERROR] 対象ファイルが存在しません: " + targetPath);
+                        Log.Error("[ERROR] 対象ファイルが存在しません: " + targetPath);
                         return false;
                     }
 
@@ -79,7 +77,7 @@ namespace Launcher.Services
                     var baseHash = Hash.Sha256(targetPath);
                     if (!string.Equals(baseHash, patch.BaseSha256, StringComparison.OrdinalIgnoreCase))
                     {
-                        _log("[Error] 旧ハッシュ不一致: " + targetPath);
+                        Log.Error("[Error] 旧ハッシュ不一致: " + targetPath);
                         return false;
                     }
 
@@ -118,7 +116,7 @@ namespace Launcher.Services
                     var newHash = Hash.Sha256(newTmpPath);
                     if (!string.Equals(newHash, patch.NewSha256, StringComparison.OrdinalIgnoreCase))
                     {
-                        _log("[Error] 新ハッシュ不一致: " + patch.Path);
+                        Log.Error("[Error] 新ハッシュ不一致: " + patch.Path);
                         return false;
                     }
 
@@ -138,14 +136,12 @@ namespace Launcher.Services
 
                 // すべて成功 → バージョン更新
                 File.WriteAllText(config.CurrentVersionFile, manifest.Version, Encoding.UTF8);
-                _log("更新完了: " + manifest.Version);
+                Log.Error("更新完了: " + manifest.Version);
                 return true;
             }
             catch (Exception ex)
             {
-                _log("[Error] " + ex.Message);
-
-                Log.Error(ex.Message);
+                Log.Error("[Error] " + ex.Message);
                 return false;
             }
         }
