@@ -11,9 +11,13 @@
 
   <ItemGroup>
     <None Remove="Assets\logo.png" />
+    <None Remove="launcher.json" />
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="launcher.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <Content Include="MihanadaIcon.ico" />
   </ItemGroup>
 

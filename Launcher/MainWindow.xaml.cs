@@ -1,4 +1,5 @@
-﻿using Launcher.Services;
+﻿using Launcher.Config;
+using Launcher.Services;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -7,10 +8,31 @@ namespace Launcher
     public partial class MainWindow : Window
     {
         private readonly GameService _gameService;
+        private readonly LauncherConfig _config;
 
         public MainWindow()
         {
             InitializeComponent();
+
+            try
+            {
+                // 設定ファイルの読み込み
+                _config = LauncherConfig.Load("launcher.json");
+
+                // タイトル表示を設定ファイルから
+                TitleText.Text = _config.GameTitle;
+
+                Log("設定ファイルを読み込みました。");
+            }
+            catch (Exception ex)
+            {
+                Log("設定ファイルの読み込みに失敗しました: " + ex.Message);
+
+                // 設定ファイルがない場合は操作不可
+                PlayButton.IsEnabled = false;
+                UpdateButton.IsEnabled = false;
+                return;
+            }
 
             _gameService = new GameService();
             _gameService.GameStarted += OnGameStarted;
@@ -24,8 +46,7 @@ namespace Launcher
         {
             try
             {
-                // TODO: 設定ファイル読み込み後に正しいパスを設定
-                var gameExePath = "";
+                var gameExePath = _config.GameExePath;
 
                 if (string.IsNullOrWhiteSpace(gameExePath))
                 {
