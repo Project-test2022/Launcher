@@ -35,7 +35,7 @@ namespace Launcher.Services
             return existing.Length > 0;
         }
 
-        public bool Laungh(string gameExePath)
+        public bool Launch(string gameExePath)
         {
             if (string.IsNullOrWhiteSpace(gameExePath))
             {
