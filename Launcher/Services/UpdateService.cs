@@ -35,7 +35,7 @@ namespace Launcher.Services
             _fetchService = new ManifestFetchService();
             _versionService = new VersionCheckService();
             _downloadService = new PatchDownloadService(_httpClient, Progress);
-            _applyService = new PatchApplyService(Progress);
+            _applyService = new PatchApplyService(Progress, _httpClient);
         }
 
         /// <summary>
@@ -81,7 +81,7 @@ namespace Launcher.Services
                     string zipPath = await _downloadService.DownloadAsync(patchUrl);
 
                     // ZIP展開・適用処理
-                    await _applyService.ApplyAsync(zipPath, manifest.RemoveFiles);
+                    await _applyService.ApplyAsync(zipPath, manifest.RemoveFiles, manifest.AddFiles);
 
                     // バージョンファイル更新
                     await File.WriteAllTextAsync(versionFilePath, versionInfo.LatestVersion);
