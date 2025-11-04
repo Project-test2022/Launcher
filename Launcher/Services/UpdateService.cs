@@ -81,7 +81,12 @@ namespace Launcher.Services
                     string zipPath = await _downloadService.DownloadAsync(patchUrl);
 
                     // ZIP展開・適用処理
-                    await _applyService.ApplyAsync(zipPath, manifest.RemoveFiles, manifest.AddFiles);
+                    await _applyService.ApplyAsync(
+                        zipPath,
+                        manifest.RemoveFiles,
+                        manifest.AddFiles,
+                        manifest.PatchArchives
+                    );
 
                     // バージョンファイル更新
                     await File.WriteAllTextAsync(versionFilePath, versionInfo.LatestVersion);

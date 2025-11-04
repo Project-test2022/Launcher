@@ -24,7 +24,8 @@ namespace Launcher.Services
         public async Task ApplyAsync(
             string patchZipPath,
             List<string>? removeFiles = null,
-            List<AddArchiveEntry>? addFiles = null)
+            List<AddArchiveEntry>? addFiles = null,
+            List<PatchArchiveEntry>? patchArchives = null)
         {
             string baseDir = AppContext.BaseDirectory;
             string gameDir = Path.Combine(baseDir, "Game");
@@ -41,33 +42,34 @@ namespace Launcher.Services
                 Directory.CreateDirectory(tempDir);
                 Directory.CreateDirectory(extractDir);
 
+                // --- 差分ZIP展開 ---
                 _progress(70, "差分パッチを展開しています...");
                 ZipFile.ExtractToDirectory(patchZipPath, extractDir, true);
 
-                // --- 削除処理 ---
+                // --- 不要ファイル削除 ---
                 var remover = new PatchRemoveExecutor(_progress);
                 remover.Execute(baseDir, removeFiles);
 
-                // --- 既存データコピー ---
-                _progress(80, "既存データをコピーしています...");
-                await DirectoryUtility.CopyDirectoryAsync(gameDir, tempDir);
+                // --- 差分適用 ---
+                if (patchArchives is { Count: > 0 })
+                {
+                    _progress(80, "差分を適用しています...");
+                    foreach (var archive in patchArchives)
+                    {
+                        if (archive.Files == null || archive.Files.Count == 0)
+                            continue;
 
-                // --- 差分反映 ---
-                _progress(90, "差分を適用しています...");
-                await DirectoryUtility.CopyDirectoryAsync(extractDir, tempDir);
+                        var deltaExecutor = new PatchDeltaExecutor(_progress);
+                        await deltaExecutor.ExecuteAsync(baseDir, extractDir, archive.Files);
+                    }
+                }
 
-                // --- 追加ファイル処理 ---
+                // --- 追加ファイル ---
                 var adder = new PatchAddExecutor(_progress, _httpClient);
-                await adder.ExecuteAsync(tmpRoot, tempDir, addFiles);
+                await adder.ExecuteAsync(tmpRoot, gameDir, addFiles);
 
-                // --- 本番反映 ---
-                _progress(95, "更新内容を反映しています...");
-                if (Directory.Exists(oldDir)) Directory.Delete(oldDir, true);
-                if (Directory.Exists(gameDir)) Directory.Move(gameDir, oldDir);
-                Directory.Move(tempDir, gameDir);
-
-                _progress(100, "更新完了。旧データを削除しています...");
-                if (Directory.Exists(oldDir)) Directory.Delete(oldDir, true);
+                // --- 完了処理 ---
+                _progress(100, "更新が完了しました。");
             }
             catch
             {
