@@ -1,104 +1,83 @@
-﻿using System.IO;
+﻿using Launcher.Utility;
+using System.IO;
 using System.IO.Compression;
-using Launcher.Utility;
 
 namespace Launcher.Services
 {
-    /// <summary>
-    /// ダウンロード済みパッチの展開および適用を担当するサービス。
-    /// </summary>
     public sealed class PatchApplyService
     {
         private readonly Action<double, string> _progress;
-        private readonly string _baseDir;
-        private readonly string _gameDir;
-        private readonly string _tempDir;
-        private readonly string _oldDir;
-        private readonly string _extractDir;
 
         public PatchApplyService(Action<double, string> progress)
         {
-            _progress = progress ?? ((_, _) => { });
-
-            _baseDir = AppContext.BaseDirectory;
-            _gameDir = Path.Combine(_baseDir, "Game");
-            _tempDir = Path.Combine(_baseDir, "Game_temp");
-            _oldDir = Path.Combine(_baseDir, "Game_old");
-            _extractDir = Path.Combine(_baseDir, "temp", "extracted");
+            _progress = progress ?? ((_, __) => { });
         }
 
         /// <summary>
-        /// パッチZIPを展開し、既存ゲームフォルダに適用します。
+        /// ZIPを展開し、指定された削除リストを反映してパッチを適用します。
         /// </summary>
-        public async Task ApplyAsync(string zipPath)
+        public async Task ApplyAsync(string zipPath, List<string>? removeFiles = null)
         {
             if (!File.Exists(zipPath))
             {
                 throw new FileNotFoundException("パッチファイルが見つかりません。", zipPath);
             }
 
+            string baseDir = AppContext.BaseDirectory;
+            string gameDir = Path.Combine(baseDir, "Game");
+            string tempDir = Path.Combine(baseDir, "Game_temp");
+            string oldDir = Path.Combine(baseDir, "Game_old");
+            string extractDir = Path.Combine(baseDir, "temp", "extracted");
+
             try
             {
-                // 一時フォルダを初期化
-                if (Directory.Exists(_tempDir))
+                // --- 一時ディレクトリ準備 ---
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
+                if (Directory.Exists(extractDir)) Directory.Delete(extractDir, true);
+                Directory.CreateDirectory(tempDir);
+                Directory.CreateDirectory(extractDir);
+
+                _progress(70, "パッチを展開しています...");
+                ZipFile.ExtractToDirectory(zipPath, extractDir, true);
+
+                // --- 削除ファイルの適用 ---
+                if (removeFiles is { Count: > 0 })
                 {
-                    Directory.Delete(_tempDir, true);
+                    _progress(75, "不要ファイルを削除しています...");
+                    foreach (var relPath in removeFiles)
+                    {
+                        string targetPath = Path.Combine(gameDir, relPath);
+                        if (File.Exists(targetPath))
+                        {
+                            File.Delete(targetPath);
+                        }
+                        else if (Directory.Exists(targetPath))
+                        {
+                            Directory.Delete(targetPath, true);
+                        }
+                    }
                 }
 
-                if (!Directory.Exists(_gameDir))
-                {
-                    Directory.CreateDirectory(_gameDir);
-                }
+                _progress(80, "既存データをコピーしています...");
+                await DirectoryUtility.CopyDirectoryAsync(gameDir, tempDir);
 
-                _progress(70, "ゲームデータをコピーしています...");
-                await DirectoryUtility.CopyDirectoryAsync(_gameDir, _tempDir);
-
-                _progress(80, "パッチを展開しています...");
-                if (Directory.Exists(_extractDir))
-                {
-                    Directory.Delete(_extractDir, true);
-                }
-                Directory.CreateDirectory(_extractDir);
-                ZipFile.ExtractToDirectory(zipPath, _extractDir, true);
-
-                _progress(90, "パッチを適用しています...");
-                await DirectoryUtility.CopyDirectoryAsync(_extractDir, _tempDir);
+                _progress(90, "パッチ内容を適用しています...");
+                await DirectoryUtility.CopyDirectoryAsync(extractDir, tempDir);
 
                 _progress(95, "更新内容を反映しています...");
+                if (Directory.Exists(oldDir)) Directory.Delete(oldDir, true);
+                if (Directory.Exists(gameDir)) Directory.Move(gameDir, oldDir);
+                Directory.Move(tempDir, gameDir);
 
-                // 旧フォルダ削除
-                if (Directory.Exists(_oldDir))
-                {
-                    Directory.Delete(_oldDir, true);
-                }
-
-                // 元のフォルダを退避
-                if (Directory.Exists(_gameDir))
-                {
-                    Directory.Move(_gameDir, _oldDir);
-                }
-
-                // 新しいフォルダを正式なGameフォルダにリネーム
-                Directory.Move(_tempDir, _gameDir);
-
-                _progress(100, "更新が完了しました。旧データを削除します。");
-
-                // 古いデータを削除
-                if (Directory.Exists(_oldDir))
-                {
-                    Directory.Delete(_oldDir, true);
-                }
+                _progress(100, "更新完了。旧データを削除します。");
+                if (Directory.Exists(oldDir)) Directory.Delete(oldDir, true);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                _progress(0, "[Error] パッチ適用中にエラーが発生しました: " + ex.Message);
-
-                // ロールバック処理
-                if (Directory.Exists(_tempDir))
+                if (Directory.Exists(tempDir))
                 {
-                    Directory.Delete(_tempDir, true);
+                    Directory.Delete(tempDir, true);
                 }
-
                 throw;
             }
         }
