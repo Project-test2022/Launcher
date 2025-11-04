@@ -2,7 +2,6 @@
 using System.IO;
 using System.IO.Compression;
 using System.Net.Http;
-using System.Text.Json;
 
 namespace Launcher.Services
 {
@@ -17,10 +16,6 @@ namespace Launcher.Services
         private readonly VersionCheckService _versionService = new();
 
         private readonly HttpClient _httpClient;
-        private readonly JsonSerializerOptions _jsonOptions = new()
-        {
-            PropertyNameCaseInsensitive = true
-        };
         private string TmpDir => Path.Combine(AppContext.BaseDirectory, "temp");
 
         public UpdateService()
@@ -77,7 +72,8 @@ namespace Launcher.Services
                     }
 
                     // パッチのダウンロード
-                    string zipPath = await DownloadPatchAsync(patchUrl ?? "");
+                    var downloader = new PatchDownloadService(_httpClient, Progress);
+                    string zipPath = await downloader.DownloadAsync(patchUrl);
 
                     // ZIP展開・適用処理
                     await ExtractAndApplyPatchAsync(zipPath);
@@ -104,68 +100,6 @@ namespace Launcher.Services
             {
                 Error("予期しないエラーが発生しました: " + ex.Message);
             }
-        }
-
-        private async Task<string> DownloadPatchAsync(string url)
-        {
-            if (string.IsNullOrWhiteSpace(url))
-            {
-                Error("パッチファイルのURLが設定されていません。");
-                throw new InvalidOperationException("パッチファイルのURLが設定されていません。");
-            }
-
-            string tmpDir = TmpDir;
-            // 一度削除してから作成
-            if (Directory.Exists(tmpDir))
-            {
-                Directory.Delete(tmpDir, true);
-            }
-            Directory.CreateDirectory(tmpDir);
-
-            string outputPath = Path.Combine(tmpDir, "update.zip");
-            Info(20, "パッチファイルをダウンロードしています...");
-
-            try
-            {
-                using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
-                response.EnsureSuccessStatusCode();
-
-                long total = response.Content.Headers.ContentLength ?? -1L;
-                bool canReport = total > 0;
-
-                await using var stream = await response.Content.ReadAsStreamAsync();
-                await using var fileStream = File.Create(outputPath);
-
-                var buffer = new byte[81920];
-                long totalRead = 0;
-                int read;
-                double lastPercent = 0;
-
-                while ((read = await stream.ReadAsync(buffer)) > 0)
-                {
-                    await fileStream.WriteAsync(buffer.AsMemory(0, read));
-                    totalRead += read;
-
-                    if (canReport)
-                    {
-                        double percent = 20 + (double)totalRead / total * 60;
-                        if (percent - lastPercent >= 1)
-                        {
-                            Info(percent, $"ダウンロード中... {percent:F0}%");
-                            lastPercent = percent;
-                        }
-                    }
-                }
-
-                Info(80, "パッチのダウンロードが完了しました。");
-            }
-            catch (Exception ex)
-            {
-                Error($"パッチのダウンロードに失敗しました: {ex.Message}");
-                throw new IOException("パッチのダウンロードに失敗しました。", ex);
-            }
-
-            return outputPath;
         }
 
         private async Task ExtractAndApplyPatchAsync(string zipPath)
