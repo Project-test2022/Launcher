@@ -1,6 +1,6 @@
 ﻿namespace Launcher.Model
 {
-    internal sealed class AddArchiveEntry
+    public sealed class AddArchiveEntry
     {
         public string? ArchiveName { get; set; }
         public string? Url { get; set; }

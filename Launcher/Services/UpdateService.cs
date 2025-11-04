@@ -12,6 +12,10 @@ namespace Launcher.Services
     public sealed class UpdateService
     {
         public event Action<double, string>? ProgressChanged;
+
+        private readonly ManifestFetchService _fetchService = new();
+        private readonly VersionCheckService _versionService = new();
+
         private readonly HttpClient _httpClient;
         private readonly JsonSerializerOptions _jsonOptions = new()
         {
@@ -38,93 +42,68 @@ namespace Launcher.Services
         /// </summary>
         public async Task RunAsync(string manifestUrl, string versionFilePath)
         {
-            Info(0, "最新バージョンを確認中...");
-
-            // マニフェストの取得
-            Manifest manifest = await GetManifestAsync(manifestUrl);
-
-            // 差分パッチが存在しない（初期リリース）の場合はスキップ
-            if (manifest.IsEmpty())
-            {
-                Info(100, "更新は存在しません。");
-                return;
-            }
-
-            // バージョン情報の取得
-            VersionInfo versionInfo = await CheckVersionAsync(manifest, versionFilePath);
-
-            // バージョン比較
-            if (!versionInfo.UpdateRequired)
-            {
-                Info(100, $"最新バージョンです({versionInfo.LatestVersion})。");
-                return;
-            }
-
-            // 更新が必要な場合
-            Info(10, $"更新を開始します: {versionInfo.CurrentVersion} → {versionInfo.LatestVersion}");
-
             try
             {
-                string? patchUrl = manifest.GetPatchUrl();
-                if (string.IsNullOrWhiteSpace(patchUrl))
+                Info(0, "最新バージョンを確認中...");
+
+                // マニフェストの取得
+                Manifest manifest = await _fetchService.FetchAsync(manifestUrl);
+                // 差分パッチが存在しない（初期リリース）の場合はスキップ
+                if (manifest.IsEmpty())
                 {
-                    Info(100, "差分パッチは存在しません。");
+                    Info(100, "更新は存在しません。");
                     return;
                 }
 
-                // パッチのダウンロード
-                string zipPath = await DownloadPatchAsync(patchUrl ?? "");
+                // バージョン情報の取得
+                VersionInfo versionInfo = await _versionService.CheckAsync(manifest, versionFilePath);
 
-                // ZIP展開・適用処理
-                await ExtractAndApplyPatchAsync(zipPath);
+                // バージョン比較
+                if (!versionInfo.UpdateRequired)
+                {
+                    Info(100, $"最新バージョンです({versionInfo.LatestVersion})。");
+                    return;
+                }
+                // 更新が必要な場合
+                Info(10, $"更新を開始します: {versionInfo.CurrentVersion} → {versionInfo.LatestVersion}");
 
-                // バージョンファイル更新
-                await File.WriteAllTextAsync(versionFilePath, versionInfo.LatestVersion);
+                try
+                {
+                    string? patchUrl = manifest.GetPatchUrl();
+                    if (string.IsNullOrWhiteSpace(patchUrl))
+                    {
+                        Info(100, "差分パッチは存在しません。");
+                        return;
+                    }
+
+                    // パッチのダウンロード
+                    string zipPath = await DownloadPatchAsync(patchUrl ?? "");
+
+                    // ZIP展開・適用処理
+                    await ExtractAndApplyPatchAsync(zipPath);
+
+                    // バージョンファイル更新
+                    await File.WriteAllTextAsync(versionFilePath, versionInfo.LatestVersion);
+                }
+                finally
+                {
+                    CleanupTempFiles();
+                }
+
+                Info(100, $"更新完了（{versionInfo.LatestVersion}）。");
             }
-            finally
+            catch (IOException ex)
             {
-                CleanupTempFiles();
+                Error("ネットワークまたはファイルアクセスでエラーが発生しました: " + ex.Message);
             }
-
-            Info(100, $"更新完了（{versionInfo.LatestVersion}）。");
-        }
-
-        private async Task<Manifest> GetManifestAsync(string manifestUrl)
-        {
-            string json;
-            try
+            catch (InvalidDataException ex)
             {
-                json = await _httpClient.GetStringAsync(manifestUrl);
+                Error("マニフェストの内容が不正です: " + ex.Message);
             }
-            catch (HttpRequestException ex)
+            catch (Exception ex)
             {
-                Error("マニフェストの取得に失敗しました: " + ex.Message);
-                throw new IOException($"マニフェストの取得に失敗しました。", ex);
+                Error("予期しないエラーが発生しました: " + ex.Message);
             }
-
-            Manifest? manifest = JsonSerializer.Deserialize<Manifest>(json, _jsonOptions);
-            if (manifest == null)
-            {
-                Error("マニフェストの内容が不正です。");
-                throw new InvalidDataException("マニフェストの内容が不正です。");
-            }
-
-            return manifest;
-        }
-
-        private async Task<VersionInfo> CheckVersionAsync(Manifest manifest, string versionFilePath)
-        {
-            // 現在バージョンを取得
-            string currentVersion = "0.0.0";
-            if (File.Exists(versionFilePath))
-            {
-                currentVersion = await File.ReadAllTextAsync(versionFilePath);
-                currentVersion = currentVersion.Trim();
-            }
-
-            bool updateRequired = manifest.Version != currentVersion;
-
-            return new VersionInfo(currentVersion, manifest.Version, updateRequired);
         }
 
         private async Task<string> DownloadPatchAsync(string url)

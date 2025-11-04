@@ -1,6 +1,6 @@
 ﻿namespace Launcher.Model
 {
-    internal sealed class PatchArchiveEntry
+    public sealed class PatchArchiveEntry
     {
         public string? ArchiveName { get; set; }
         public string? Url { get; set; }

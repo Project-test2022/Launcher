@@ -1,6 +1,6 @@
 ﻿namespace Launcher.Model
 {
-    internal sealed class VersionInfo
+    public sealed class VersionInfo
     {
         public string CurrentVersion { get; }
         public string LatestVersion { get; }

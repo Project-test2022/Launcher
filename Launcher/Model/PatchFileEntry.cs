@@ -1,6 +1,6 @@
 ﻿namespace Launcher.Model
 {
-    internal sealed class PatchFileEntry
+    public sealed class PatchFileEntry
     {
         public string? Path { get; set; }
         public string? BaseSha256 { get; set; }
