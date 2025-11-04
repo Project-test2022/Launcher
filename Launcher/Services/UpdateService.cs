@@ -11,8 +11,10 @@ namespace Launcher.Services
     {
         public event Action<double, string>? ProgressChanged;
 
-        private readonly ManifestFetchService _fetchService = new();
-        private readonly VersionCheckService _versionService = new();
+        private readonly ManifestFetchService _fetchService;
+        private readonly VersionCheckService _versionService;
+        private readonly PatchDownloadService _downloadService;
+        private readonly PatchApplyService _applyService;
 
         private readonly HttpClient _httpClient;
         private string TmpDir => Path.Combine(AppContext.BaseDirectory, "temp");
@@ -29,6 +31,11 @@ namespace Launcher.Services
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "Launcher/1.0");
             // JSONを扱うことを明示
             _httpClient.DefaultRequestHeaders.Add("Accept", "application/vnd.github.v3+json");
+
+            _fetchService = new ManifestFetchService();
+            _versionService = new VersionCheckService();
+            _downloadService = new PatchDownloadService(_httpClient, Progress);
+            _applyService = new PatchApplyService(Progress);
         }
 
         /// <summary>
@@ -71,12 +78,10 @@ namespace Launcher.Services
                     }
 
                     // パッチのダウンロード
-                    var downloader = new PatchDownloadService(_httpClient, Progress);
-                    string zipPath = await downloader.DownloadAsync(patchUrl);
+                    string zipPath = await _downloadService.DownloadAsync(patchUrl);
 
                     // ZIP展開・適用処理
-                    var applier = new PatchApplyService(Progress);
-                    await applier.ApplyAsync(zipPath);
+                    await _applyService.ApplyAsync(zipPath);
 
                     // バージョンファイル更新
                     await File.WriteAllTextAsync(versionFilePath, versionInfo.LatestVersion);
