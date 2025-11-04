@@ -41,10 +41,17 @@ namespace Launcher.Services
             Info(0, "最新バージョンを確認中...");
 
             // マニフェストの取得
-            var manifest = await GetManifestAsync(manifestUrl);
+            Manifest manifest = await GetManifestAsync(manifestUrl);
+
+            // 差分パッチが存在しない（初期リリース）の場合はスキップ
+            if (manifest.IsEmpty())
+            {
+                Info(100, "更新は存在しません。");
+                return;
+            }
 
             // バージョン情報の取得
-            var versionInfo = await CheckVersionAsync(manifest, versionFilePath);
+            VersionInfo versionInfo = await CheckVersionAsync(manifest, versionFilePath);
 
             // バージョン比較
             if (!versionInfo.UpdateRequired)
@@ -58,8 +65,15 @@ namespace Launcher.Services
 
             try
             {
+                string? patchUrl = manifest.GetPatchUrl();
+                if (string.IsNullOrWhiteSpace(patchUrl))
+                {
+                    Info(100, "差分パッチは存在しません。");
+                    return;
+                }
+
                 // パッチのダウンロード
-                var zipPath = await DownloadPatchAsync(manifest.PatchUrl ?? "");
+                string zipPath = await DownloadPatchAsync(patchUrl ?? "");
 
                 // ZIP展開・適用処理
                 await ExtractAndApplyPatchAsync(zipPath);
@@ -88,7 +102,7 @@ namespace Launcher.Services
                 throw new IOException($"マニフェストの取得に失敗しました。", ex);
             }
 
-            var manifest = JsonSerializer.Deserialize<Manifest>(json, _jsonOptions);
+            Manifest? manifest = JsonSerializer.Deserialize<Manifest>(json, _jsonOptions);
             if (manifest == null)
             {
                 Error("マニフェストの内容が不正です。");
@@ -101,7 +115,7 @@ namespace Launcher.Services
         private async Task<VersionInfo> CheckVersionAsync(Manifest manifest, string versionFilePath)
         {
             // 現在バージョンを取得
-            var currentVersion = "0.0.0";
+            string currentVersion = "0.0.0";
             if (File.Exists(versionFilePath))
             {
                 currentVersion = await File.ReadAllTextAsync(versionFilePath);
@@ -121,7 +135,7 @@ namespace Launcher.Services
                 throw new InvalidOperationException("パッチファイルのURLが設定されていません。");
             }
 
-            var tmpDir = TmpDir;
+            string tmpDir = TmpDir;
             // 一度削除してから作成
             if (Directory.Exists(tmpDir))
             {
@@ -129,7 +143,7 @@ namespace Launcher.Services
             }
             Directory.CreateDirectory(tmpDir);
 
-            var outputPath = Path.Combine(tmpDir, "update.zip");
+            string outputPath = Path.Combine(tmpDir, "update.zip");
             Info(20, "パッチファイルをダウンロードしています...");
 
             try
@@ -137,8 +151,8 @@ namespace Launcher.Services
                 using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
                 response.EnsureSuccessStatusCode();
 
-                var total = response.Content.Headers.ContentLength ?? -1L;
-                var canReport = total > 0;
+                long total = response.Content.Headers.ContentLength ?? -1L;
+                bool canReport = total > 0;
 
                 await using var stream = await response.Content.ReadAsStreamAsync();
                 await using var fileStream = File.Create(outputPath);
@@ -155,7 +169,7 @@ namespace Launcher.Services
 
                     if (canReport)
                     {
-                        var percent = 20 + (double)totalRead / total * 60;
+                        double percent = 20 + (double)totalRead / total * 60;
                         if (percent - lastPercent >= 1)
                         {
                             Info(percent, $"ダウンロード中... {percent:F0}%");
@@ -183,10 +197,10 @@ namespace Launcher.Services
                 throw new FileNotFoundException("パッチファイルが見つかりません。", zipPath);
             }
 
-            var baseDir = AppContext.BaseDirectory;
-            var gameDir = Path.Combine(baseDir, "Game");
-            var tempDir = Path.Combine(baseDir, "Game_temp");
-            var oldDir = Path.Combine(baseDir, "Game_old");
+            string baseDir = AppContext.BaseDirectory;
+            string gameDir = Path.Combine(baseDir, "Game");
+            string tempDir = Path.Combine(baseDir, "Game_temp");
+            string oldDir = Path.Combine(baseDir, "Game_old");
 
             try
             {
@@ -204,7 +218,7 @@ namespace Launcher.Services
                 await CopyDirectoryAsync(gameDir, tempDir);
 
                 Info(80, "パッチを展開しています..");
-                var extractDir = Path.Combine(TmpDir, "extracted");
+                string extractDir = Path.Combine(TmpDir, "extracted");
                 if (Directory.Exists(extractDir))
                 {
                     Directory.Delete(extractDir, true);
@@ -255,15 +269,15 @@ namespace Launcher.Services
 
         private static async Task CopyDirectoryAsync(string sourceDir, string destDir)
         {
-            foreach (var dir in Directory.GetDirectories(sourceDir, "*", SearchOption.AllDirectories))
+            foreach (string dir in Directory.GetDirectories(sourceDir, "*", SearchOption.AllDirectories))
             {
-                var targetDir = dir.Replace(sourceDir, destDir);
+                string targetDir = dir.Replace(sourceDir, destDir);
                 Directory.CreateDirectory(targetDir);
             }
 
-            foreach (var file in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories))
+            foreach (string file in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories))
             {
-                var targetFile = file.Replace(sourceDir, destDir);
+                string targetFile = file.Replace(sourceDir, destDir);
                 Directory.CreateDirectory(Path.GetDirectoryName(targetFile)!);
 
                 await using var sourceStream = File.OpenRead(file);
@@ -274,7 +288,7 @@ namespace Launcher.Services
 
         private void CleanupTempFiles()
         {
-            var tmpDir = TmpDir;
+            string tmpDir = TmpDir;
             if (Directory.Exists(tmpDir))
             {
                 try
