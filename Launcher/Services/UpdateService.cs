@@ -1,6 +1,5 @@
 ﻿using Launcher.Model;
 using System.IO;
-using System.IO.Compression;
 using System.Net.Http;
 
 namespace Launcher.Services
@@ -76,7 +75,8 @@ namespace Launcher.Services
                     string zipPath = await downloader.DownloadAsync(patchUrl);
 
                     // ZIP展開・適用処理
-                    await ExtractAndApplyPatchAsync(zipPath);
+                    var applier = new PatchApplyService(Progress);
+                    await applier.ApplyAsync(zipPath);
 
                     // バージョンファイル更新
                     await File.WriteAllTextAsync(versionFilePath, versionInfo.LatestVersion);
@@ -99,103 +99,6 @@ namespace Launcher.Services
             catch (Exception ex)
             {
                 Error("予期しないエラーが発生しました: " + ex.Message);
-            }
-        }
-
-        private async Task ExtractAndApplyPatchAsync(string zipPath)
-        {
-            if (!File.Exists(zipPath))
-            {
-                Error("パッチファイルが見つかりません。");
-                throw new FileNotFoundException("パッチファイルが見つかりません。", zipPath);
-            }
-
-            string baseDir = AppContext.BaseDirectory;
-            string gameDir = Path.Combine(baseDir, "Game");
-            string tempDir = Path.Combine(baseDir, "Game_temp");
-            string oldDir = Path.Combine(baseDir, "Game_old");
-
-            try
-            {
-                // クリーンアップ
-                if (Directory.Exists(tempDir))
-                {
-                    Directory.Delete(tempDir, true);
-                }
-                if (!Directory.Exists(gameDir))
-                {
-                    Directory.CreateDirectory(gameDir);
-                }
-
-                Info(70, "ゲームデータをコピーしています...");
-                await CopyDirectoryAsync(gameDir, tempDir);
-
-                Info(80, "パッチを展開しています..");
-                string extractDir = Path.Combine(TmpDir, "extracted");
-                if (Directory.Exists(extractDir))
-                {
-                    Directory.Delete(extractDir, true);
-                }
-                Directory.CreateDirectory(extractDir);
-                ZipFile.ExtractToDirectory(zipPath, extractDir, true);
-
-                Info(90, "パッチを適用しています...");
-                await CopyDirectoryAsync(extractDir, tempDir);
-
-                Info(95, "更新内容を反映しています...");
-                // 旧フォルダ削除
-                if (Directory.Exists(oldDir))
-                {
-                    Directory.Delete(oldDir, true);
-                }
-
-                // 元のフォルダを退避
-                if (Directory.Exists(gameDir))
-                {
-                    Directory.Move(gameDir, oldDir);
-                }
-
-                // 新しいフォルダを正式フォルダにリネーム
-                Directory.Move(tempDir, gameDir);
-
-                Info(100, "更新が完了しました。旧データを削除します。");
-
-                // 旧フォルダ削除
-                if (Directory.Exists(oldDir))
-                {
-                    Directory.Delete(oldDir, true);
-                }
-            }
-            catch (Exception ex)
-            {
-                Error($"パッチの適用に失敗しました: {ex.Message}");
-
-                // ロールバック
-                if (Directory.Exists(tempDir))
-                {
-                    Directory.Delete(tempDir, true);
-                }
-
-                throw;
-            }
-        }
-
-        private static async Task CopyDirectoryAsync(string sourceDir, string destDir)
-        {
-            foreach (string dir in Directory.GetDirectories(sourceDir, "*", SearchOption.AllDirectories))
-            {
-                string targetDir = dir.Replace(sourceDir, destDir);
-                Directory.CreateDirectory(targetDir);
-            }
-
-            foreach (string file in Directory.GetFiles(sourceDir, "*", SearchOption.AllDirectories))
-            {
-                string targetFile = file.Replace(sourceDir, destDir);
-                Directory.CreateDirectory(Path.GetDirectoryName(targetFile)!);
-
-                await using var sourceStream = File.OpenRead(file);
-                await using var destStream = File.Create(targetFile);
-                await sourceStream.CopyToAsync(destStream);
             }
         }
 
