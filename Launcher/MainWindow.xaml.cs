@@ -1,5 +1,6 @@
 ﻿using Launcher.Config;
 using Launcher.Services;
+using Launcher.Utility;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -27,7 +28,7 @@ namespace Launcher
             }
             catch (Exception ex)
             {
-                Log("設定ファイルの読み込みに失敗しました: " + ex.Message);
+                Error("設定ファイルの読み込みに失敗しました。", ex);
 
                 // 設定ファイルがない場合は操作不可
                 PlayButton.IsEnabled = false;
@@ -55,13 +56,16 @@ namespace Launcher
                     return;
                 }
 
-                if (_gameService.IsRunning(gameExePath))
+                string fullPath = System.IO.Path.GetFullPath(
+                    System.IO.Path.Combine(AppContext.BaseDirectory, gameExePath)
+                );
+                if (_gameService.IsRunning(fullPath))
                 {
                     Log("すでにゲームが起動中です。");
                     return;
                 }
 
-                var success = _gameService.Launch(gameExePath);
+                var success = _gameService.Launch(fullPath);
                 if (!success)
                 {
                     Log("ゲームの起動に失敗しました。");
@@ -73,7 +77,7 @@ namespace Launcher
             }
             catch (Exception ex)
             {
-                Log("ゲーム起動中にエラーが発生しました: " + ex.Message);
+                Error("ゲーム起動中にエラーが発生しました。", ex);
             }
         }
 
@@ -127,6 +131,7 @@ namespace Launcher
             {
                 Log("ゲームを起動しました。");
                 ProgressBar.Value = 0;
+                Close();
             });
         }
 
@@ -149,6 +154,12 @@ namespace Launcher
         private void Log(string message)
         {
             LogText.Text = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        }
+
+        private void Error(string message, Exception? exeption = null)
+        {
+            Log(message);
+            Utility.Log.Error(message, exeption);
         }
     }
 }

@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using Launcher.Utility;
+using System.Diagnostics;
 using System.IO;
 
 namespace Launcher.Services
@@ -81,6 +82,7 @@ namespace Launcher.Services
             catch (Exception ex)
             {
                 Debug.WriteLine($"ゲームの起動に失敗しました: {ex.Message}");
+                Log.Error("ゲームの起動に失敗しました。", ex);
                 return false;
             }
 
