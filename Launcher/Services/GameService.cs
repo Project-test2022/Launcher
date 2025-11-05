@@ -53,6 +53,21 @@ namespace Launcher.Services
                 return false;
             }
 
+            // Zone.Identifier 削除
+            try
+            {
+                var zoneFilePath = gameExePath + ":Zone.Identifier";
+                if (File.Exists(zoneFilePath))
+                {
+                    File.Delete(zoneFilePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"ゲームの起動に失敗しました: {ex.Message}");
+                Log.Error("ゲームの起動に失敗しました。", ex);
+            }
+
             try
             {
                 _gameProcess = new Process
