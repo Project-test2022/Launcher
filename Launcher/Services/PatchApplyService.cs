@@ -77,6 +77,16 @@ namespace Launcher.Services
                     Directory.Delete(tempDir, true);
                 throw;
             }
+            finally
+            {
+                // --- 後片付け ---
+                if (Directory.Exists(tempDir))
+                    Directory.Delete(tempDir, true);
+                if (Directory.Exists(extractDir))
+                    Directory.Delete(extractDir, true);
+                if (Directory.Exists(oldDir))
+                    Directory.Delete(oldDir, true);
+            }
         }
     }
 }

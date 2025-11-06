@@ -50,7 +50,7 @@ namespace Launcher.Services
 
                 // 現在バージョンを取得
                 string currentVersion = "0.0.0";
-                if (File.Exists(versionFilePath))
+                if (File.Exists(Path.Combine(AppContext.BaseDirectory, versionFilePath)))
                 {
                     currentVersion = (await File.ReadAllTextAsync(versionFilePath)).Trim();
                 }
@@ -98,7 +98,7 @@ namespace Launcher.Services
                     string zipPath = await _downloadService.DownloadAsync(patchUrl);
 
                     // パッチ適用
-                    await _applyService.ApplyAsync(zipPath);
+                    await _applyService.ApplyAsync(zipPath, manifest.RemoveFiles, manifest.AddFiles, manifest.PatchArchives);
 
                     // バージョンファイル更新
                     await File.WriteAllTextAsync(versionFilePath, nextRelease.Version);

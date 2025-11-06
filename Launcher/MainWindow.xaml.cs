@@ -109,7 +109,7 @@ namespace Launcher
                     });
                 };
 
-                await updateService.RunAsync(_config.ManifestUrl, "version.txt");
+                await updateService.RunAsync(_config.ManifestUrl, "Game/version.txt");
             }
             catch (Exception ex)
             {
