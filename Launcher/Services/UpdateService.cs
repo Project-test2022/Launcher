@@ -5,14 +5,14 @@ using System.Net.Http;
 namespace Launcher.Services
 {
     /// <summary>
-    /// アップデート処理を管理するサービス。
+    /// 段階的アップデートを管理するサービス。
     /// </summary>
     public sealed class UpdateService
     {
         public event Action<double, string>? ProgressChanged;
 
-        private readonly ManifestFetchService _fetchService;
-        private readonly VersionCheckService _versionService;
+        private readonly ManifestIndexFetchService _indexFetchService;
+        private readonly ManifestFetchService _manifestFetchService;
         private readonly PatchDownloadService _downloadService;
         private readonly PatchApplyService _applyService;
 
@@ -27,76 +27,86 @@ namespace Launcher.Services
             };
 
             _httpClient = new HttpClient(handler);
-            // User-Agent ヘッダーを設定
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "Launcher/1.0");
-            // JSONを扱うことを明示
             _httpClient.DefaultRequestHeaders.Add("Accept", "application/vnd.github.v3+json");
 
-            _fetchService = new ManifestFetchService();
-            _versionService = new VersionCheckService();
+            _indexFetchService = new ManifestIndexFetchService(_httpClient);
+            _manifestFetchService = new ManifestFetchService();
             _downloadService = new PatchDownloadService(_httpClient, Progress);
             _applyService = new PatchApplyService(Progress, _httpClient);
         }
 
         /// <summary>
-        /// 最新マニフェストを取得し、バージョンを比較して更新が必要なら適用します。
+        /// 段階的にすべてのアップデートを適用します。
         /// </summary>
-        public async Task RunAsync(string manifestUrl, string versionFilePath)
+        public async Task RunAsync(string manifestIndexUrl, string versionFilePath)
         {
             try
             {
-                Info(0, "最新バージョンを確認中...");
+                Info(0, "リリースインデックスを取得しています...");
 
-                // マニフェストの取得
-                Manifest manifest = await _fetchService.FetchAsync(manifestUrl);
-                // 差分パッチが存在しない（初期リリース）の場合はスキップ
-                if (manifest.IsEmpty())
+                // manifest_index.jsonの取得
+                ReleaseIndex releaseIndex = await _indexFetchService.FetchAsync(manifestIndexUrl);
+
+                // 現在バージョンを取得
+                string currentVersion = "0.0.0";
+                if (File.Exists(versionFilePath))
                 {
-                    Info(100, "更新は存在しません。");
-                    return;
+                    currentVersion = (await File.ReadAllTextAsync(versionFilePath)).Trim();
                 }
 
-                // バージョン情報の取得
-                VersionInfo versionInfo = await _versionService.CheckAsync(manifest, versionFilePath);
+                // 段階的にアップデートを適用
+                bool updated = false;
 
-                // バージョン比較
-                if (!versionInfo.UpdateRequired)
+                while (true)
                 {
-                    Info(100, $"最新バージョンです({versionInfo.LatestVersion})。");
-                    return;
-                }
-                // 更新が必要な場合
-                Info(10, $"更新を開始します: {versionInfo.CurrentVersion} → {versionInfo.LatestVersion}");
+                    // 現在バージョンをBaseFromとして持つリリースを探す
+                    ReleaseEntry? nextRelease = releaseIndex.Releases
+                        .FirstOrDefault(r => r.BaseFrom == currentVersion);
 
-                try
-                {
+                    if (nextRelease == null)
+                    {
+                        if (!updated)
+                            Info(100, $"最新バージョンです ({currentVersion})。");
+                        else
+                            Info(100, $"すべての更新を適用しました ({currentVersion})。");
+                        break;
+                    }
+
+                    Info(5, $"次のバージョン {nextRelease.Version} を確認中...");
+
+                    // latest.json取得
+                    Manifest manifest = await _manifestFetchService.FetchAsync(nextRelease.Url);
+
+                    if (manifest.IsEmpty())
+                    {
+                        Info(100, $"更新情報が存在しません ({nextRelease.Version})。");
+                        break;
+                    }
+
+                    // パッチURL取得
                     string? patchUrl = manifest.GetPatchUrl();
                     if (string.IsNullOrWhiteSpace(patchUrl))
                     {
-                        Info(100, "差分パッチは存在しません。");
-                        return;
+                        Info(100, $"パッチファイルが存在しません ({nextRelease.Version})。");
+                        break;
                     }
 
-                    // パッチのダウンロード
+                    Info(10, $"更新を開始します: {currentVersion} → {nextRelease.Version}");
+
+                    // パッチダウンロード
                     string zipPath = await _downloadService.DownloadAsync(patchUrl);
 
-                    // ZIP展開・適用処理
-                    await _applyService.ApplyAsync(
-                        zipPath,
-                        manifest.RemoveFiles,
-                        manifest.AddFiles,
-                        manifest.PatchArchives
-                    );
+                    // パッチ適用
+                    await _applyService.ApplyAsync(zipPath);
 
                     // バージョンファイル更新
-                    await File.WriteAllTextAsync(versionFilePath, versionInfo.LatestVersion);
-                }
-                finally
-                {
-                    CleanupTempFiles();
-                }
+                    await File.WriteAllTextAsync(versionFilePath, nextRelease.Version);
+                    currentVersion = nextRelease.Version;
+                    updated = true;
 
-                Info(100, $"更新完了（{versionInfo.LatestVersion}）。");
+                    Info(90, $"バージョン {currentVersion} への更新が完了しました。");
+                }
             }
             catch (IOException ex)
             {
@@ -110,6 +120,10 @@ namespace Launcher.Services
             {
                 Error("予期しないエラーが発生しました: " + ex.Message);
             }
+            finally
+            {
+                CleanupTempFiles();
+            }
         }
 
         private void CleanupTempFiles()
@@ -117,30 +131,12 @@ namespace Launcher.Services
             string tmpDir = TmpDir;
             if (Directory.Exists(tmpDir))
             {
-                try
-                {
-                    Directory.Delete(tmpDir, true);
-                }
-                catch
-                {
-                    // ファイルロック中などで削除できない場合は無視
-                }
+                try { Directory.Delete(tmpDir, true); } catch { }
             }
         }
 
-        private void Info(double percent, string message)
-        {
-            Progress(percent, message);
-        }
-
-        private void Error(string message)
-        {
-            Progress(0, "[Error] " + message);
-        }
-
-        private void Progress(double percent, string message)
-        {
-            ProgressChanged?.Invoke(percent, message);
-        }
+        private void Info(double percent, string message) => Progress(percent, message);
+        private void Error(string message) => Progress(0, "[Error] " + message);
+        private void Progress(double percent, string message) => ProgressChanged?.Invoke(percent, message);
     }
 }
